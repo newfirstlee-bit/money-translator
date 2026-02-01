@@ -99,14 +99,24 @@ st.markdown("""
     }
     
     /* 앵커 링크 아이콘 숨기기 */
-    .stMarkdown a.header-link,
+    /* 앵커 링크 아이콘 숨기기 (강력 적용) */
+    .stMarkdown h1 a,
+    .stMarkdown h2 a,
+    .stMarkdown h3 a,
+    .stMarkdown h4 a,
+    .stMarkdown h5 a,
+    .stMarkdown h6 a,
+    a.header-link,
     a[data-testid="StyledLinkIconContainer"],
     [data-testid="StyledLinkIconContainer"],
-    button[data-testid="StyledLinkIconContainer"],
     .css-zt5igj,
-    h1 > a, h2 > a, h3 > a, h4 > a {
+    .st-emotion-cache-1h9usn1 {
         display: none !important;
         visibility: hidden !important;
+        pointer-events: none !important;
+        opacity: 0 !important;
+        width: 0 !important;
+        height: 0 !important;
     }
     
     /* 전체 페이지 하단 여백 제거 */
@@ -347,8 +357,7 @@ st.markdown("""
         border-radius: 8px;
         border: 1px solid #e0e0e0;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        height: 100%;
-        min-height: 280px;
+        height: auto;
     }
     
     .portfolio-card h4 {
