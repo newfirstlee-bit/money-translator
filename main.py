@@ -10,7 +10,8 @@ from analyzer import analyze_news, generate_briefing
 st.set_page_config(
     page_title="매일 경제 브리핑",
     page_icon="📊",
-    layout="centered"
+    layout="centered",
+    initial_sidebar_state="collapsed"
 )
 
 # --- Custom CSS ---
@@ -303,6 +304,61 @@ st.markdown("""
         background-color: #333333 !important;
         color: #ffffff !important;
     }
+    
+    /* 모달 너비 확장 및 스타일 */
+    div[data-testid="stDialog"] div[role="dialog"] {
+        width: 80vw !important;
+        max-width: 900px !important;
+    }
+    
+    .portfolio-header {
+        background: transparent;
+        color: #1a1a1a !important;
+        padding: 0 0 24px 0;
+        margin-bottom: 24px;
+        text-align: left;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .portfolio-header h2 {
+        color: #1a1a1a !important;
+        margin: 0;
+        font-size: 2.0rem;
+        font-weight: 700;
+    }
+    
+    .portfolio-header p {
+        color: #666 !important;
+        margin: 8px 0 0 0;
+        font-size: 1.0rem;
+    }
+    
+    .portfolio-section {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid #eee;
+        margin-bottom: 20px;
+    }
+    
+    .portfolio-card {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        height: 100%;
+        min-height: 280px;
+    }
+    
+    .portfolio-card h4 {
+        color: #1a1a1a !important;
+        margin-top: 0;
+        border-bottom: 2px solid #333;
+        padding-bottom: 8px;
+        margin-bottom: 16px;
+        display: inline-block;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -536,7 +592,90 @@ def run_update(batch_date):
         else:
             st.error("분석 과정에서 문제가 발생했습니다.")
 
+@st.dialog("프로젝트 소개")
+def show_project_info():
+    # 헤더 섹션
+    st.markdown("""
+        <div class="portfolio-header">
+            <h2>매일 경제 브리핑</h2>
+            <p>AI 기반 경제 뉴스 통역기 & 투자 인사이트 제공 서비스</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # 1. 개요 및 시나리오 (상하 배치 - Full Width)
+    st.markdown("""
+        <div class="portfolio-section">
+            <h3 style="margin-top:0;">🎯 프로젝트 목표</h3>
+            <p style="font-size: 1.05rem; line-height: 1.6; margin-bottom: 0;">
+                경제 뉴스를 봐도 어느 주식에 영향을 끼치는지 파악하기 어려운 사람에게 
+                <strong>주식 호재/악재 인사이트를 제공</strong>합니다.
+            </p>
+        </div>
+        
+        <div class="portfolio-section">
+            <h3 style="margin-top:0;">👤 유저 시나리오</h3>
+            <p style="line-height: 1.6; margin-bottom: 0;">
+                <strong>상황</strong>: 투자 정보를 얻고 싶은데 시간이 없는 직장인<br>
+                <strong>행동</strong>: 출근길에 앱 접속 > [오늘 뉴스 보기] 클릭<br>
+                <strong>경험</strong>: 3줄 요약과 호재/악재 라벨 확인 > 관련 수혜주 정보 획득
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("### 💡 기술적 의사결정 (Technical Decisions)")
+    
+    # 2. 고려사항 (상하 배치 - Full Width)
+    st.markdown("""
+        <div class="portfolio-card">
+            <h4>1. 비용 효율성 및 모델 선정</h4>
+            <p style="color: #666; font-size: 0.9rem; margin-bottom: 12px;">"성능은 유지하되 운영 비용 Zero 달성"</p>
+            <div style="background: #f5f5f5; padding: 12px; border-radius: 6px;">
+                <strong>의사결정 포인트</strong><br>
+                챗GPT API key 발급 비용 부담이 MVP 기능 단계에서는 불필요하다고 판단했습니다. 
+                <strong>Groq(Llama 3.3)</strong>을 도입하여 비용을 절감할 수 있었습니다.
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+        <div class="portfolio-card" style="margin-top: 20px;">
+            <h4>2. 데이터 전처리 및 품질관리</h4>
+            <p style="color: #666; font-size: 0.9rem; margin-bottom: 12px;">"필요한 데이터만 사용할 수 있도록 필터링 규칙 적용"</p>
+            <div style="background: #f5f5f5; padding: 12px; border-radius: 6px;">
+                <strong>의사결정 포인트</strong><br>
+                무작정 뉴스 요약을 시키면 효용성이 떨어지는 뉴스 기사도 함께 요약되기 때문에 
+                <strong>Rule-base 데이터 필터링</strong>을 먼저 적용하여 경제 뉴스와 무관한 키워드를 제거하는 작업을 진행했습니다.
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("### 🚧 한계점 (Limitations)")
+    
+    # 3. 한계점 (Full Width)
+    st.markdown("""
+        <div class="portfolio-card">
+            <h4>트렌드 분석 기능에 제한이 존재함</h4>
+            <div style="background: #f5f5f5; padding: 12px; border-radius: 6px; margin-top: 16px;">
+                <p style="margin: 0 0 8px 0;">
+                    <strong>원인</strong><br>
+                    네이버 검색 API는 조회수 데이터를 제공하지 않아 별도로 조회수와 언급량을 분석해야 하는데, 이를 파악하려면 수천 건의 기사 본문을 크롤링하여 LLM에 입력해야 합니다. 과도한 토큰 비용 발생으로 인하여 뉴스기사 데이터 자체를 분석하는 기능까지는 개발하지 못했습니다.
+                </p>
+                <p style="margin: 0;">
+                    <strong>해결방법</strong><br>
+                    특정 키워드 가중치 필터링을 대안으로 적용하여 효율을 높였습니다.<br>
+                    <span style="color: #666; font-size: 0.9rem;">(사용된 키워드: 단독, 체결, 수주, 인수, 합병, 공시, 특징주, 급등, 어닝 서프라이즈, 흑자 전환 등)</span>
+                </p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
 def main():
+    # 프로젝트 소개 버튼 (좌측 상단)
+    if st.button("📋 프로젝트 소개", type="primary"):
+        show_project_info()
+        
     st.title("매일 경제 브리핑")
     st.caption("AI가 떠먹여주는 오늘의 경제 뉴스 & 투자 인사이트")
     
@@ -604,6 +743,10 @@ def main():
 
     # --- Sidebar ---
     with st.sidebar:
+        # if st.button("📋 프로젝트 소개", type="primary", use_container_width=True):
+        #     show_project_info()
+            
+        # st.divider()
         st.header("관리자 메뉴")
         st.caption(f"운영시간: {BUSINESS_HOUR_START}:00 ~ {BUSINESS_HOUR_END}:00")
         st.caption(f"하루 새로고침 횟수: {DAILY_REFRESH_LIMIT}회")
