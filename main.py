@@ -711,10 +711,9 @@ def main():
     # DB 조회
     news_data = get_news_by_date(batch_date)
 
-    # 프로젝트 소개 버튼 (좌측 상단) - 데이터가 있을 때만 표시
-    if news_data:
-        if st.button("📋 프로젝트 소개", type="primary"):
-            show_project_info()
+    # 프로젝트 소개 버튼 (좌측 상단)
+    if st.button("📋 프로젝트 소개", type="primary"):
+        show_project_info()
     
     st.title("매일 경제 브리핑")
     st.caption("AI가 떠먹여주는 오늘의 경제 뉴스 & 투자 인사이트")
@@ -776,14 +775,9 @@ def main():
         st.write("")
         
         if is_business_hours():
-            # 버튼 분리 (프로젝트 소개 | 분석 시작)
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("📋 프로젝트 소개", type="secondary", use_container_width=True):
-                    show_project_info()
-            with c2:
-                if st.button("오늘 뉴스 분석 시작하기", type="primary", use_container_width=True):
-                    run_update(batch_date)
+
+            if st.button("오늘 뉴스 분석 시작하기", type="primary", use_container_width=True):
+                run_update(batch_date)
         else:
             st.warning("현재 운영시간(07:00~22:00) 외입니다. 운영시간에 다시 방문해 주세요.")
 
