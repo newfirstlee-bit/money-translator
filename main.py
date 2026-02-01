@@ -678,13 +678,44 @@ def show_project_info():
                 </p>
             </div>
         </div>
+        </div>
     """, unsafe_allow_html=True)
+    
+    # 닫기 버튼 및 다시보지 않기
+    st.markdown("<br>", unsafe_allow_html=True)
+    col_l, col_r = st.columns([1, 1])
+    with col_l:
+        dont_show = st.checkbox("오늘 하루 열지 않기")
+    with col_r:
+        if st.button("프로젝트 구경하기 (닫기)", type="primary", use_container_width=True):
+            if dont_show:
+                st.session_state.dont_show_today = True
+            st.rerun()
 
 def main():
-    # 프로젝트 소개 버튼 (좌측 상단)
-    if st.button("📋 프로젝트 소개", type="primary"):
-        show_project_info()
+    batch_date = get_batch_date()
+    
+    # --- Auto-Show Logic ---
+    if 'has_seen_intro' not in st.session_state:
+        # 세션에서 처음 방문인지 체크
+        should_show = True
         
+        # 오늘 하루 보지 않기 체크 여부 확인
+        if 'dont_show_today' in st.session_state and st.session_state.dont_show_today:
+            should_show = False
+            
+        if should_show:
+            show_project_info()
+            st.session_state.has_seen_intro = True
+            
+    # DB 조회
+    news_data = get_news_by_date(batch_date)
+
+    # 프로젝트 소개 버튼 (좌측 상단) - 데이터가 있을 때만 표시
+    if news_data:
+        if st.button("📋 프로젝트 소개", type="primary"):
+            show_project_info()
+    
     st.title("매일 경제 브리핑")
     st.caption("AI가 떠먹여주는 오늘의 경제 뉴스 & 투자 인사이트")
     
@@ -745,8 +776,14 @@ def main():
         st.write("")
         
         if is_business_hours():
-            if st.button("오늘 뉴스 분석 시작하기", use_container_width=True):
-                run_update(batch_date)
+            # 버튼 분리 (프로젝트 소개 | 분석 시작)
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("📋 프로젝트 소개", type="secondary", use_container_width=True):
+                    show_project_info()
+            with c2:
+                if st.button("오늘 뉴스 분석 시작하기", type="primary", use_container_width=True):
+                    run_update(batch_date)
         else:
             st.warning("현재 운영시간(07:00~22:00) 외입니다. 운영시간에 다시 방문해 주세요.")
 
