@@ -3,10 +3,30 @@ import requests
 import re
 from dotenv import load_dotenv
 
+try:
+    import streamlit as st
+except ImportError:
+    st = None
+
 load_dotenv()
 
-NAVER_CLIENT_ID = os.getenv('NAVER_CLIENT_ID')
-NAVER_CLIENT_SECRET = os.getenv('NAVER_CLIENT_SECRET')
+def get_secret(key):
+    """
+    환경변수 또는 Streamlit Secrets에서 키를 가져옵니다.
+    """
+    # 1. 환경변수 확인 (로컬 우선)
+    value = os.getenv(key)
+    if value:
+        return value
+    
+    # 2. Streamlit Secrets 확인 (배포 환경)
+    if st and hasattr(st, 'secrets') and key in st.secrets:
+        return st.secrets[key]
+    
+    return None
+
+NAVER_CLIENT_ID = get_secret('NAVER_CLIENT_ID')
+NAVER_CLIENT_SECRET = get_secret('NAVER_CLIENT_SECRET')
 
 # 검색할 때 쓸 알짜 키워드 (우선순위 높은 뉴스)
 TARGET_KEYWORDS = [

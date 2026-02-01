@@ -3,9 +3,25 @@ import json
 from groq import Groq
 from dotenv import load_dotenv
 
+try:
+    import streamlit as st
+except ImportError:
+    st = None
+
 load_dotenv()
 
-GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+def get_secret(key):
+    """
+    환경변수 또는 Streamlit Secrets에서 키를 가져옵니다.
+    """
+    value = os.getenv(key)
+    if value:
+        return value
+    if st and hasattr(st, 'secrets') and key in st.secrets:
+        return st.secrets[key]
+    return None
+
+GROQ_API_KEY = get_secret('GROQ_API_KEY')
 client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 def generate_briefing(news_list):
