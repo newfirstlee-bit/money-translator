@@ -379,9 +379,12 @@ DAILY_REFRESH_LIMIT = 20  # 하루 새로고침 횟수 제한
 BUSINESS_HOUR_START = 7  # 운영 시작 시간
 BUSINESS_HOUR_END = 22  # 운영 종료 시간
 
+# KST Timezone Definition
+KST = datetime.timezone(datetime.timedelta(hours=9))
+
 # --- Logic ---
 def get_batch_date():
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(KST)
     if now.hour < 7:
         batch_date = (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
     else:
@@ -390,7 +393,7 @@ def get_batch_date():
 
 def is_business_hours():
     """운영 시간인지 확인 (07:00 ~ 22:00)"""
-    current_hour = datetime.datetime.now().hour
+    current_hour = datetime.datetime.now(KST).hour
     return BUSINESS_HOUR_START <= current_hour <= BUSINESS_HOUR_END
 
 def get_refresh_count(batch_date):
@@ -416,8 +419,25 @@ def format_last_update_time(last_update):
     if not last_update:
         return "정보 없음"
     
-    now = datetime.datetime.now()
-    if last_update.date() == now.date():
+    # Ensure last_update is aware or naive consistently. Best to convert to KST if naive
+    # Assuming DB returns naive time, usually UTC or local. 
+    # For simplicity, treating last_update as naive and comparing with naive if need be, 
+    # BUT better to compare with KST now.
+    
+    now = datetime.datetime.now(KST)
+    
+    # If last_update is close to now, we should handle it.
+    # However, 'last_update' comes from DB (database.py). 
+    # Let's assume database stores text or naive datetime. 
+    # We will just focus on the 'now' part being KST for "Today" calculation.
+    
+    # NOTE: database.py likely returns datetime object.
+    
+    # To compare dates safely:
+    last_update_date = last_update.date()
+    now_date = now.date()
+    
+    if last_update_date == now_date:
         # 오늘이면 "오늘 오후 2:30" 형식
         hour = last_update.hour
         minute = last_update.minute
