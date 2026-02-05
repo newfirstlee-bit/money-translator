@@ -382,6 +382,8 @@ BUSINESS_HOUR_END = 22  # 운영 종료 시간
 # KST Timezone Definition
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
+import concurrent.futures
+
 # --- Logic ---
 def get_batch_date():
     now = datetime.datetime.now(KST)
@@ -419,21 +421,7 @@ def format_last_update_time(last_update):
     if not last_update:
         return "정보 없음"
     
-    # Ensure last_update is aware or naive consistently. Best to convert to KST if naive
-    # Assuming DB returns naive time, usually UTC or local. 
-    # For simplicity, treating last_update as naive and comparing with naive if need be, 
-    # BUT better to compare with KST now.
-    
     now = datetime.datetime.now(KST)
-    
-    # If last_update is close to now, we should handle it.
-    # However, 'last_update' comes from DB (database.py). 
-    # Let's assume database stores text or naive datetime. 
-    # We will just focus on the 'now' part being KST for "Today" calculation.
-    
-    # NOTE: database.py likely returns datetime object.
-    
-    # To compare dates safely:
     last_update_date = last_update.date()
     now_date = now.date()
     
@@ -566,60 +554,71 @@ def render_news_card(item, index):
 '''
     st.markdown(card_html, unsafe_allow_html=True)
 
-def run_update(batch_date):
-    """뉴스 수집 및 분석 실행 (전체 화면 로딩)"""
-    # 로딩 상태 표시
-    loading_container = st.empty()
-    
-    with loading_container.container():
-        st.markdown("""
-        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; text-align: center;">
-            <div style="font-size: 48px; margin-bottom: 24px;">🔄</div>
-            <h2 style="margin: 0 0 16px 0;">AI가 뉴스를 분석하고 있습니다</h2>
-            <p id="loading-status" style="color: #666;">잠시만 기다려주세요...</p>
-        </div>
-        """, unsafe_allow_html=True)
+
+# --- Background Worker Logic ---
+
+def process_news_data(batch_date):
+    """
+    백그라운드에서 실행될 실제 뉴스 처리 로직.
+    st.* 함수 사용 불가 (UI 업데이트 안됨). 로그나 리턴값으로 처리.
+    """
+    try:
+        print(f"[{batch_date}] fetching news...")
+        raw_news = fetch_naver_news(query="경제", display=10)
         
-        progress = st.progress(0, text="뉴스 수집 중...")
+        if not raw_news:
+            return {"status": "error", "message": "뉴스 수집 실패"}
+
+        print(f"[{batch_date}] analyzing news...")
+        analyzed_news = analyze_news(raw_news)
         
-        raw_news = []
-        try:
-            raw_news = fetch_naver_news(query="경제", display=10)
-            progress.progress(30, text=f"뉴스 {len(raw_news)}개 확보 완료")
-        except Exception as e:
-            st.error(f"뉴스 수집 실패: {e}")
-            return
-        
-        analyzed_news = []
-        briefing = None
-        if raw_news:
-            progress.progress(50, text="AI가 시장 영향을 분석 중...")
-            try:
-                analyzed_news = analyze_news(raw_news)
-                progress.progress(70, text="분석 완료, 브리핑 작성 중...")
-            except Exception as e:
-                st.error(f"분석 실패: {e}")
-                return
-            
-            try:
-                briefing = generate_briefing(raw_news)
-                progress.progress(90, text="브리핑 완료, 저장 중...")
-            except Exception as e:
-                st.error(f"브리핑 생성 실패: {e}")
+        print(f"[{batch_date}] generating briefing...")
+        briefing = generate_briefing(raw_news)
         
         if analyzed_news:
-            # 기존 데이터 삭제 후 새로 저장
             from database import delete_news_by_date
             delete_news_by_date(batch_date)
             
             save_news(analyzed_news, batch_date)
             if briefing:
                 save_briefing(briefing, batch_date)
-            progress.progress(100, text="완료!")
-            time.sleep(0.5)
-            st.rerun()
+            
+            return {"status": "success"}
         else:
-            st.error("분석 과정에서 문제가 발생했습니다.")
+            return {"status": "error", "message": "분석 결과 없음"}
+
+    except Exception as e:
+        print(f"Error in process_news_data: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+class AnalysisManager:
+    def __init__(self):
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        self._future = None
+        self._current_date = None
+
+    def start_analysis(self, batch_date):
+        if self.is_running(batch_date):
+            return
+        self._current_date = batch_date
+        self._future = self._executor.submit(process_news_data, batch_date)
+
+    def is_running(self, batch_date):
+        # 날짜가 같고, 퓨처가 있고, 아직 안 끝났으면 실행 중
+        if self._current_date == batch_date and self._future and not self._future.done():
+            return True
+        return False
+    
+    def get_result(self):
+        if self._future and self._future.done():
+            return self._future.result()
+        return None
+
+@st.cache_resource
+def get_manager():
+    return AnalysisManager()
+
 
 @st.dialog("프로젝트 소개")
 def show_project_info():
@@ -714,10 +713,13 @@ def show_project_info():
 
 def main():
     batch_date = get_batch_date()
+    manager = get_manager()
     
-    # --- Auto-Show Logic ---
+    # DB 조회
+    news_data = get_news_by_date(batch_date)
+    
+    # --- Auto-Show & Auto-Run Logic ---
     if 'has_seen_intro' not in st.session_state:
-        # 세션에서 처음 방문인지 체크
         should_show = True
         
         # 오늘 하루 보지 않기 체크 여부 확인
@@ -725,11 +727,16 @@ def main():
             should_show = False
             
         if should_show:
+            # 1. Show Modal
             show_project_info()
             st.session_state.has_seen_intro = True
             
-    # DB 조회
-    news_data = get_news_by_date(batch_date)
+            # 2. Lazy Auto-Run (Threaded)
+            # 운영시간이고, 데이터가 없고, 아직 실행 중이 아니라면 -> 백그라운드 분석 시작
+            if is_business_hours() and not news_data and not manager.is_running(batch_date):
+                 # 토스트 제거
+                 manager.start_analysis(batch_date)
+
 
     # 프로젝트 소개 버튼 (좌측 상단)
     if st.button("📋 프로젝트 소개", type="primary"):
@@ -738,48 +745,70 @@ def main():
     st.title("매일 경제 브리핑")
     st.caption("AI가 떠먹여주는 오늘의 경제 뉴스 & 투자 인사이트")
     
-    batch_date = get_batch_date()
-    
-    # 새로고침 트리거 확인
-    if 'trigger_refresh' not in st.session_state:
-        st.session_state.trigger_refresh = False
-    
-    # 토스트 메시지 표시 (남은 횟수)
+    # 새로고침 토스트
     if 'show_remaining_toast' in st.session_state and st.session_state.show_remaining_toast is not None:
         remaining = st.session_state.show_remaining_toast
         st.toast(f"남은횟수 {remaining}/{DAILY_REFRESH_LIMIT}")
         st.session_state.show_remaining_toast = None
-    
-    # DB 조회
-    news_data = get_news_by_date(batch_date)
-    briefing_data = get_briefing_by_date(batch_date)
-    last_update = get_last_update_time(batch_date)
-    
-    # 새로고침 트리거가 활성화되면 로딩 실행
-    if st.session_state.trigger_refresh:
-        st.session_state.trigger_refresh = False
-        run_update(batch_date)
-        return  # run_update에서 st.rerun() 호출
 
     
+    # --- UI Rendering based on Data & Status ---
+    
+    # 1. 분석 중인 경우 (Loading State)
+    if manager.is_running(batch_date):
+        st.info("AI가 뉴스를 분석하고 있습니다... 잠시만 기다려주세요.")
+        
+        # 로딩 애니메이션
+        st.markdown("""
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 300px; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 24px;">🔄</div>
+            <h3 style="margin: 0 0 16px 0;">시장 데이터를 분석 중입니다</h3>
+            <p style="color: #666;">(약 30초 정도 소요됩니다)</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Poll for completion
+        # 중요: 팝업이 떠있는 경우(should_show=True)에는 자동 새로고침을 하지 않음
+        # 팝업을 읽는 동안 백그라운드에서 돌아가게 두고, 팝업을 닫으면 그때 새로고침됨 (사용자 액션 또는 다음 틱)
+        if 'should_show' not in locals() or not should_show:
+            time.sleep(2)
+            st.rerun()
+        return
+
+    # 2. 분석 완료되었으나 막 끝난 경우 (데이터 다시 로드 필요)
+    # 이미 news_data는 위에서 로드했으므로, 만약 비어있는데 manager는 끝났다면?
+    # -> 다시 DB 조회해봐야 함.
+    if not news_data:
+        # 혹시 방금 끝났나?
+        news_data = get_news_by_date(batch_date)
+        briefing_data = get_briefing_by_date(batch_date)
+        last_update = get_last_update_time(batch_date)
+    else:
+        # 이미 데이터 있음
+        briefing_data = get_briefing_by_date(batch_date)
+        last_update = get_last_update_time(batch_date)
+    
+    
+    # 3. 데이터가 있는 경우 (Dashboard)
     if news_data:
-        # Case B: 데이터가 있을 때
         st.markdown(f"### {batch_date}")
         
         # 마지막 업데이트 시간 표시
         update_time_str = format_last_update_time(last_update)
-        remaining = DAILY_REFRESH_LIMIT - get_refresh_count(batch_date)
         
         col1, col2 = st.columns([3, 1])
         with col1:
             st.markdown(f'<div class="update-info">마지막 업데이트: {update_time_str}</div>', unsafe_allow_html=True)
         with col2:
             refresh_possible = can_refresh(batch_date)
+            # 수동 새로고침 버튼
             if st.button("새로고침", use_container_width=True, disabled=not refresh_possible):
                 if refresh_possible:
                     remaining_after = increment_refresh_count(batch_date)
-                    st.session_state.trigger_refresh = True
                     st.session_state.show_remaining_toast = remaining_after
+                    
+                    # 수동 실행도 Manager를 통해 실행 (통일)
+                    manager.start_analysis(batch_date)
                     st.rerun()
         
         # 상단 브리핑 대시보드
@@ -790,23 +819,20 @@ def main():
             render_news_card(item, idx)
             
     else:
-        # Case A: 데이터가 없을 때
+        # 4. 데이터가 없는 경우 (Empty State)
         st.info(f"{batch_date} 기준 데이터가 아직 없습니다.")
         st.write("")
         
         if is_business_hours():
-
+            # 수동 시작 버튼
             if st.button("오늘 뉴스 분석 시작하기", type="primary", use_container_width=True):
-                run_update(batch_date)
+                manager.start_analysis(batch_date)
+                st.rerun()
         else:
             st.warning("현재 운영시간(07:00~22:00) 외입니다. 운영시간에 다시 방문해 주세요.")
 
     # --- Sidebar ---
     with st.sidebar:
-        # if st.button("📋 프로젝트 소개", type="primary", use_container_width=True):
-        #     show_project_info()
-            
-        # st.divider()
         st.header("관리자 메뉴")
         st.caption(f"운영시간: {BUSINESS_HOUR_START}:00 ~ {BUSINESS_HOUR_END}:00")
         st.caption(f"하루 새로고침 횟수: {DAILY_REFRESH_LIMIT}회")
