@@ -11,7 +11,10 @@ st.set_page_config(
     page_title="매일 경제 브리핑",
     page_icon="📊",
     layout="centered",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
+    menu_items={
+        'About': "# 매일 경제 브리핑"
+    }
 )
 
 # --- Custom CSS ---
@@ -592,7 +595,8 @@ def process_news_data(batch_date):
         return {"status": "error", "message": str(e)}
 
 
-class AnalysisManager:
+# 캐시 문제 해결을 위해 클래스명 변경 (V3)
+class AnalysisManagerV3:
     def __init__(self):
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         self._future = None
@@ -624,16 +628,20 @@ class AnalysisManager:
                 return {"status": "error", "message": str(e)}
         return None
 
-    @property
-    def last_error(self):
-        # 퓨처가 완료되었는지 확인하여 에러 업데이트
+    def check_error(self):
+        # 퓨처가 완료되었는지 확인하여 에러 업데이트 (명시적 호출)
         if self._future and self._future.done() and self._last_error is None:
-             self.get_result() # 결과 확인하여 에러 있으면 설정
+             self.get_result()
+        return self._last_error
+
+    @property
+    def last_error_prop(self):
+        # 호환성을 위해 남겨두되, 직접 호출 권장
         return self._last_error
 
 @st.cache_resource
-def get_manager():
-    return AnalysisManager()
+def get_analysis_manager_v3():
+    return AnalysisManagerV3()
 
 
 @st.dialog("프로젝트 소개")
@@ -716,20 +724,26 @@ def show_project_info():
         </div>
     """, unsafe_allow_html=True)
     
-    # 닫기 버튼 및 다시보지 않기
     st.markdown("<br>", unsafe_allow_html=True)
     col_l, col_r = st.columns([1, 1])
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    col_l, col_r = st.columns([1, 1])
+    
     with col_l:
-        dont_show = st.checkbox("오늘 하루 열지 않기")
+        dont_show = st.checkbox("오늘 하루 열지 않기", key="dont_show_today_chk")
     with col_r:
+        # Callback 없이 직접 처리 (안전성 확보)
         if st.button("프로젝트 구경하기 (닫기)", type="primary", use_container_width=True):
-            if dont_show:
+            st.session_state.has_seen_intro = True
+            if st.session_state.get("dont_show_today_chk"):
                 st.session_state.dont_show_today = True
             st.rerun()
 
 def main():
     batch_date = get_batch_date()
-    manager = get_manager()
+    # Cache Invalidation을 위해 함수명 변경됨 (V3)
+    manager = get_analysis_manager_v3()
     
     # DB 조회
     news_data = get_news_by_date(batch_date)
@@ -774,24 +788,49 @@ def main():
     if manager.is_running(batch_date):
         st.info("AI가 뉴스를 분석하고 있습니다... 잠시만 기다려주세요.")
         
-        # 로딩 애니메이션
+        # Custom CSS Spinner
         st.markdown("""
+        <style>
+        .loader {
+          border: 12px solid #f3f3f3;
+          border-radius: 50%;
+          border-top: 12px solid #3498db;
+          width: 80px;
+          height: 80px;
+          -webkit-animation: spin 1.5s linear infinite; /* Safari */
+          animation: spin 1.5s linear infinite;
+        }
+
+        /* Safari */
+        @-webkit-keyframes spin {
+          0% { -webkit-transform: rotate(0deg); }
+          100% { -webkit-transform: rotate(360deg); }
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        </style>
+        
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 300px; text-align: center;">
-            <div style="font-size: 48px; margin-bottom: 24px;">🔄</div>
-            <h3 style="margin: 0 0 16px 0;">시장 데이터를 분석 중입니다</h3>
-            <p style="color: #666;">(약 30초 정도 소요됩니다)</p>
+            <div class="loader"></div>
+            <h3 style="margin: 24px 0 16px 0;">시장 데이터를 분석 중입니다</h3>
+            <p style="color: #666;">약 30초 정도 소요됩니다... 잠시만 기다려주세요</p>
         </div>
         """, unsafe_allow_html=True)
         
         # Poll for completion
-        if 'should_show' not in locals() or not should_show:
-            time.sleep(2)
-            st.rerun()
+        # 팝업 여부와 관계없이 지속적으로 체크하여, 완료되면 리로드
+        time.sleep(1)
+        st.rerun()
         return
 
     # 2. 에러가 발생한 경우 (Error State)
-    if manager.last_error:
-        st.error(f"분석 중 오류가 발생했습니다: {manager.last_error}")
+    # 명시적으로 에러 체크
+    error_msg = manager.check_error()
+    if error_msg:
+        st.error(f"분석 중 오류가 발생했습니다: {error_msg}")
         if st.button("다시 시도"):
             # 에러 리셋 로직이 start_analysis에 포함됨
             manager.start_analysis(batch_date)
