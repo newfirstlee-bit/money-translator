@@ -564,7 +564,7 @@ def process_news_data(batch_date):
     """
     try:
         print(f"[{batch_date}] fetching news...")
-        raw_news = fetch_naver_news(query="경제", display=10)
+        raw_news = fetch_naver_news(query="경제", display=20)
         
         if not raw_news:
             return {"status": "error", "message": "뉴스 수집 실패"}
@@ -597,11 +597,13 @@ class AnalysisManager:
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         self._future = None
         self._current_date = None
+        self._last_error = None
 
     def start_analysis(self, batch_date):
         if self.is_running(batch_date):
             return
         self._current_date = batch_date
+        self._last_error = None  # Reset error on new start
         self._future = self._executor.submit(process_news_data, batch_date)
 
     def is_running(self, batch_date):
@@ -612,8 +614,22 @@ class AnalysisManager:
     
     def get_result(self):
         if self._future and self._future.done():
-            return self._future.result()
+            try:
+                result = self._future.result()
+                if result.get("status") == "error":
+                    self._last_error = result.get("message")
+                return result
+            except Exception as e:
+                self._last_error = str(e)
+                return {"status": "error", "message": str(e)}
         return None
+
+    @property
+    def last_error(self):
+        # 퓨처가 완료되었는지 확인하여 에러 업데이트
+        if self._future and self._future.done() and self._last_error is None:
+             self.get_result() # 결과 확인하여 에러 있으면 설정
+        return self._last_error
 
 @st.cache_resource
 def get_manager():
@@ -768,14 +784,22 @@ def main():
         """, unsafe_allow_html=True)
         
         # Poll for completion
-        # 중요: 팝업이 떠있는 경우(should_show=True)에는 자동 새로고침을 하지 않음
-        # 팝업을 읽는 동안 백그라운드에서 돌아가게 두고, 팝업을 닫으면 그때 새로고침됨 (사용자 액션 또는 다음 틱)
         if 'should_show' not in locals() or not should_show:
             time.sleep(2)
             st.rerun()
         return
 
-    # 2. 분석 완료되었으나 막 끝난 경우 (데이터 다시 로드 필요)
+    # 2. 에러가 발생한 경우 (Error State)
+    if manager.last_error:
+        st.error(f"분석 중 오류가 발생했습니다: {manager.last_error}")
+        if st.button("다시 시도"):
+            # 에러 리셋 로직이 start_analysis에 포함됨
+            manager.start_analysis(batch_date)
+            st.rerun()
+        # 에러 발생 시 진행 중단
+        return
+
+    # 3. 분석 완료되었으나 막 끝난 경우 (데이터 다시 로드 필요)
     # 이미 news_data는 위에서 로드했으므로, 만약 비어있는데 manager는 끝났다면?
     # -> 다시 DB 조회해봐야 함.
     if not news_data:

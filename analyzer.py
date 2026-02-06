@@ -144,25 +144,45 @@ Always respond in Korean. Output valid JSON only."""
         if not analyzed_data and isinstance(data, list):
             analyzed_data = data
 
-        result = []
+        filtered_result = []
         for item in analyzed_data:
             idx = item.get('index', 0) - 1
             if 0 <= idx < len(news_list):
                 original = news_list[idx]
-                original['summary'] = item.get('summary', '요약 없음')
-                original['sentiment'] = item.get('sentiment', '중립')
-                # 새로운 필드들
+                
+                # AI 분석 결과 가져오기
+                summary = item.get('summary', '요약 없음')
+                sentiment = item.get('sentiment', '중립')
                 theme = item.get('theme', '')
                 stocks = item.get('stocks', '')
                 comment = item.get('comment', '')
+
+                # --- 필터링 로직 (New) ---
+                # 1. 감성이 '중립'이면서
+                # 2. 구체적인 종목(stocks)이 없거나 '없음', '해당 없음' 등으로 표기된 경우
+                # => 과감히 제외 (정보가치 낮음)
+                is_neutral = (sentiment == '중립')
+                has_no_stock = (not stocks) or (stocks in ['없음', '해당 없음', '-', 'None'])
+                
+                if is_neutral and has_no_stock:
+                    continue  # Skip this item
+                
+                # 유효한 뉴스만 리스트에 추가
+                original['summary'] = summary
+                original['sentiment'] = sentiment
+                
                 # keywords 필드에 구조화된 정보 저장 (JSON 형태)
                 original['keywords'] = json.dumps({
                     'theme': theme,
                     'stocks': stocks,
                     'comment': comment
                 }, ensure_ascii=False)
-                result.append(original)
-        return result
+                
+                filtered_result.append(original)
+        
+        # 상위 10개만 선정 (이미 중요도 순으로 정렬되어 있다고 가정하거나, 필요한 경우 추가 정렬)
+        # 네이버 뉴스는 기본적으로 '관련도순'이므로, 필터링 후 상위 10개를 자르면 됨.
+        return filtered_result[:10]
 
     except Exception as e:
         print(f"Groq API Error: {e}")

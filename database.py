@@ -1,7 +1,7 @@
 import sqlite3
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 DB_PATH = 'daily_news.db'
 
@@ -39,6 +39,36 @@ def init_db():
     
     conn.commit()
     conn.close()
+    
+    # DB 초기화 시 오래된 데이터 정리 (7일)
+    cleanup_old_data(days_to_keep=7)
+
+def cleanup_old_data(days_to_keep=7):
+    """지정된 기간(일)보다 오래된 데이터를 삭제합니다."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        
+        # 기준 날짜 계산 (오늘 - 7일)
+        cutoff_date = (datetime.now() - timedelta(days=days_to_keep)).strftime("%Y-%m-%d")
+        
+        # 기준 날짜보다 이전(작은) 날짜의 데이터 삭제
+        # batch_date 형식은 YYYY-MM-DD 이므로 문자열 비교 가능
+        
+        c.execute("DELETE FROM daily_news WHERE batch_date < ?", (cutoff_date,))
+        news_deleted = c.rowcount
+        
+        c.execute("DELETE FROM daily_briefing WHERE batch_date < ?", (cutoff_date,))
+        briefing_deleted = c.rowcount
+        
+        conn.commit()
+        conn.close()
+        
+        if news_deleted > 0 or briefing_deleted > 0:
+            print(f"[Cleanup] Deleted old data before {cutoff_date}: News({news_deleted}), Briefing({briefing_deleted})")
+            
+    except Exception as e:
+        print(f"[Cleanup] Error during cleanup: {e}")
 
 def get_news_by_date(batch_date):
     conn = sqlite3.connect(DB_PATH)
